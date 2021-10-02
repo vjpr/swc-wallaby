@@ -28,7 +28,7 @@ DEALINGS IN THE SOFTWARE.
 
 use crate::{
     amp_attributes::amp_attributes,
-    complete_output, get_compiler,
+    complete_output, complete_output_with_ranges, get_compiler,
     hook_optimizer::hook_optimizer,
     next_dynamic::next_dynamic,
     next_ssg::next_ssg,
@@ -43,6 +43,8 @@ use swc::{try_with_handler, Compiler, TransformOutput};
 use swc_common::{chain, pass::Optional, FileName, SourceFile};
 use swc_ecmascript::ast::Program;
 use swc_ecmascript::transforms::pass::noop;
+
+use anyhow::bail;
 
 /// Input to transform
 #[derive(Debug)]
@@ -70,21 +72,17 @@ pub struct TransformTask {
     pub options: TransformOptions,
 }
 
+use crate::ranges::{get_ranges};
+
 impl Task for TransformTask {
-    type Output = TransformOutput;
+    type Output = TransformOutputWithRanges;
     type JsValue = JsObject;
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        try_with_handler(self.c.cm.clone(), |handler| {
+        let res = try_with_handler(self.c.cm.clone(), |handler| {
             self.c.run(|| match self.input {
                 Input::Source(ref s) => {
-                    let before_pass = chain!(
-                        hook_optimizer(),
-                        Optional::new(next_ssg(), !self.options.disable_next_ssg),
-                        amp_attributes(),
-                        next_dynamic(s.name.clone(), self.options.pages_dir.clone()),
-                        styled_jsx()
-                    );
+                    let before_pass = noop();
                     self.c.process_js_with_custom_pass(
                         s.clone(),
                         &handler,
@@ -95,11 +93,18 @@ impl Task for TransformTask {
                 }
             })
         })
-        .convert_err()
+        .convert_err();
+        let val = res.unwrap();
+        let ranges = vec![vec![]];
+        Ok(TransformOutputWithRanges {
+            code: val.code,
+            map: val.map,
+            ranges,
+        })
     }
 
     fn resolve(self, env: Env, result: Self::Output) -> napi::Result<Self::JsValue> {
-        complete_output(&env, result)
+        complete_output_with_ranges(&env, result)
     }
 }
 
@@ -119,6 +124,19 @@ where
     cx.env.spawn(task).map(|t| t.promise_object())
 }
 
+use crate::ranges::Ranges;
+use serde::*;
+use swc::common::errors::Handler;
+use swc::config::BuiltConfig;
+
+#[derive(Debug, Serialize)]
+pub struct TransformOutputWithRanges {
+    pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub map: Option<String>,
+    pub ranges: Ranges,
+}
+
 pub fn exec_transform<F>(cx: CallContext, op: F) -> napi::Result<JsObject>
 where
     F: FnOnce(&Compiler, String, &TransformOptions) -> Result<Arc<SourceFile>, Error>,
@@ -129,22 +147,99 @@ where
     let is_module = cx.get::<JsBoolean>(1)?;
     let options: TransformOptions = cx.get_deserialized(2)?;
 
+    let str = s.as_str()?;
+
+    let output = my_transform(c, str, is_module.get_value()?, options, op).convert_err()?;
+
+    complete_output_with_ranges(cx.env, output)
+}
+
+pub fn my_transform<F>(
+    c: Arc<Compiler>,
+    s: &str,
+    is_module: bool,
+    options: TransformOptions,
+    op: F,
+) -> Result<TransformOutputWithRanges, Error>
+where
+    F: FnOnce(&Compiler, String, &TransformOptions) -> Result<Arc<SourceFile>, Error>,
+{
     let output = try_with_handler(c.cm.clone(), |handler| {
         c.run(|| {
-            if is_module.get_value()? {
+            if is_module {
                 let program: Program =
-                    serde_json::from_str(s.as_str()?).context("failed to deserialize Program")?;
-                c.process_js(&handler, program, &options.swc)
+                    serde_json::from_str(s).context("failed to deserialize Program")?;
+                let ranges: Ranges = get_ranges(&program, c.cm.clone());
+                let res = c.process_js(&handler, program, &options.swc).unwrap();
+                // let ranges: Ranges = vec![vec![0, 0, 0, 0]];
+                Ok(TransformOutputWithRanges {
+                    code: res.code,
+                    map: res.map,
+                    ranges,
+                })
             } else {
-                let fm =
-                    op(&c, s.as_str()?.to_string(), &options).context("failed to load file")?;
-                c.process_js_file(fm, &handler, &options.swc)
+                let fm = op(&c, s.to_string(), &options).context("failed to load file")?;
+                let program = get_program(&c, fm, handler, &options)?;
+                let ranges: Ranges = get_ranges(&program, c.cm.clone());
+                let res = c.process_js(&handler, program, &options.swc).unwrap();
+                // let res = c.process_js_file(fm, &handler, &options.swc).unwrap();
+                Ok(TransformOutputWithRanges {
+                    code: res.code,
+                    map: res.map,
+                    ranges,
+                })
             }
         })
-    })
-    .convert_err()?;
+    });
+    output
+}
 
-    complete_output(cx.env, output)
+pub fn get_program(
+    c: &Arc<Compiler>,
+    fm: Arc<SourceFile>,
+    handler: &Handler,
+    options: &TransformOptions,
+) -> Result<Program, Error> {
+    // From `process_js_file`...
+
+    let opts = &options.swc;
+
+    let config = c.config_for_file(handler, opts, &fm.name)?;
+    let config = match config {
+        Some(v) => v,
+        None => {
+            bail!("cannot process file because it's ignored by .swcrc")
+        }
+    };
+
+    let custom_before_pass = noop();
+    let custom_after_pass = noop();
+
+    let config = BuiltConfig {
+        pass: chain!(custom_before_pass, config.pass, custom_after_pass),
+        syntax: config.syntax,
+        target: config.target,
+        minify: config.minify,
+        external_helpers: config.external_helpers,
+        source_maps: config.source_maps,
+        input_source_map: config.input_source_map,
+        is_module: config.is_module,
+        output_path: config.output_path,
+        source_file_name: config.source_file_name,
+        preserve_comments: config.preserve_comments,
+        inline_sources_content: config.inline_sources_content,
+    };
+
+    let program = c.parse_js(
+        fm.clone(),
+        handler,
+        config.target,
+        config.syntax,
+        config.is_module,
+        true,
+    )?;
+
+    Ok(program)
 }
 
 #[js_function(4)]

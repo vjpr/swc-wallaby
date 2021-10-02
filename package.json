@@ -1,11 +1,23 @@
 {
-  "name": "foo",
+  "name": "@live/swc-wallaby",
   "version": "0.0.1",
   "description": "",
+  "type": "module",
+  "napi": {
+    "name": "swc-wallaby"
+  },
   "scripts": {
-    "build-native": "pnpx -p @napi-rs/cli@1.2.1 napi build --platform --release --cargo-cwd . native"
+    "build-native": "node_modules/.bin/napi build --platform --release --cargo-cwd . native"
   },
   "devDependencies": {
     "@napi-rs/cli": "^1.3.3"
+  },
+  "dependencies": {
+    "@node-rs/helper": "^1.2.1"
+  },
+  "optionalDependencies": {
+    "@live/swc-wallaby-win32-x64-msvc": "0.0.1",
+    "@live/swc-wallaby-darwin-x64": "0.0.1",
+    "@live/swc-wallaby-linux-x64-gnu": "0.0.1"
   }
 }

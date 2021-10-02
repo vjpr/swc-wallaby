@@ -1,5 +1,9 @@
-const { loadBinding } = require('@node-rs/helper')
-const path = require('path')
+import {loadBinding} from '@node-rs/helper'
+import path from 'path'
+import {dirname} from 'path'
+import {fileURLToPath} from 'url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 /**
  * __dirname means load native addon from current dir
@@ -10,12 +14,12 @@ const path = require('path')
  * If failed to load addon, it will fallback to load from `next-swc-[PLATFORM]`
  */
 const bindings = loadBinding(
-  path.join(__dirname, '../../../native'),
-  'next-swc',
-  '@next/swc'
+  path.join(__dirname, './native'),
+  'swc-wallaby',
+  '@live/swc-wallaby'
 )
 
-async function transform(src, options) {
+export async function transform(src, options) {
   const isModule = typeof src !== 'string'
   options = options || {}
 
@@ -23,7 +27,7 @@ async function transform(src, options) {
     options.jsc.parser.syntax = options.jsc.parser.syntax ?? 'ecmascript'
   }
 
-  const { plugin, ...newOptions } = options
+  const {plugin, ...newOptions} = options
 
   if (plugin) {
     const m =
@@ -40,7 +44,7 @@ async function transform(src, options) {
   )
 }
 
-function transformSync(src, options) {
+export function transformSync(src, options) {
   const isModule = typeof src !== 'string'
   options = options || {}
 
@@ -48,7 +52,7 @@ function transformSync(src, options) {
     options.jsc.parser.syntax = options.jsc.parser.syntax ?? 'ecmascript'
   }
 
-  const { plugin, ...newOptions } = options
+  const {plugin, ...newOptions} = options
 
   if (plugin) {
     const m =
@@ -75,7 +79,7 @@ export function minifySync(src, opts) {
   return bindings.minifySync(toBuffer(src), toBuffer(opts ?? {}))
 }
 
-module.exports.transform = transform
-module.exports.transformSync = transformSync
-module.exports.minify = minify
-module.exports.minifySync = minifySync
+//module.exports.transform = transform
+//module.exports.transformSync = transformSync
+//module.exports.minify = minify
+//module.exports.minifySync = minifySync

@@ -39,6 +39,7 @@ use napi::{CallContext, Env, JsObject, JsUndefined};
 use std::{env, panic::set_hook, sync::Arc};
 use swc::{Compiler, TransformOutput};
 use swc_common::{self, sync::Lazy, FilePathMapping, SourceMap};
+use crate::transform::TransformOutputWithRanges;
 
 mod amp_attributes;
 mod hook_optimizer;
@@ -46,8 +47,9 @@ mod minify;
 mod next_dynamic;
 pub mod next_ssg;
 mod styled_jsx;
-mod transform;
+pub mod transform;
 mod util;
+pub mod ranges;
 
 static COMPILER: Lazy<Arc<Compiler>> = Lazy::new(|| {
     let cm = Arc::new(SourceMap::new(FilePathMapping::empty()));
@@ -84,6 +86,10 @@ fn construct_compiler(ctx: CallContext) -> napi::Result<JsUndefined> {
 }
 
 pub fn complete_output(env: &Env, output: TransformOutput) -> napi::Result<JsObject> {
+    env.to_js_value(&output)?.coerce_to_object()
+}
+
+pub fn complete_output_with_ranges(env: &Env, output: TransformOutputWithRanges) -> napi::Result<JsObject> {
     env.to_js_value(&output)?.coerce_to_object()
 }
 
