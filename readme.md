@@ -3,8 +3,11 @@
 Returns `ranges` as needed by Wallaby custom compilers.
 
 ```diff
-- const {code, map} = transformSync(...)
-+ const {code, map, ranges} = transformSync(...)
++ import * as swc from '@live/swc-wallaby'
+- import * as swc from '@swc/core'
+
+- const {code, map} = swc.transformSync(...)
++ const {code, map, ranges} = swc.transformSync(...)
 ```
 
 See: https://wallabyjs.com/docs/config/compilers.html#writing-a-custom-compiler
