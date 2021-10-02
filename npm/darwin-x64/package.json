@@ -1,5 +1,5 @@
 {
-  "name": "@next/swc-darwin-x64",
+  "name": "@live/swc-wallaby-darwin-x64",
   "version": "0.0.1",
   "os": [
     "darwin"
@@ -7,9 +7,9 @@
   "cpu": [
     "x64"
   ],
-  "main": "next-swc.darwin-x64.node",
+  "main": "swc-wallaby.darwin-x64.node",
   "files": [
-    "next-swc.darwin-x64.node"
+    "swc-wallaby.darwin-x64.node"
   ],
   "license": "MIT",
   "engines": {
