@@ -1,10 +1,12 @@
 # @live/swc-wallaby
 
+**TODO: Binaries/package are not published to npm yet.**
+
 Returns `ranges` as needed by Wallaby custom compilers.
 
 ```diff
-+ import * as swc from '@live/swc-wallaby'
 - import * as swc from '@swc/core'
++ import * as swc from '@live/swc-wallaby'
 
 - const {code, map} = swc.transformSync(...)
 + const {code, map, ranges} = swc.transformSync(...)
